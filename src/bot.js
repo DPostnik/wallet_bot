@@ -23,3 +23,5 @@ export function mainMenu() {
 bot.command('start', async (ctx) => {
   await ctx.reply('Wallet Bot', { reply_markup: mainMenu() });
 });
+
+import './handlers/accounts.js';
