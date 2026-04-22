@@ -28,3 +28,5 @@ import './handlers/exchange.js';
 import './handlers/deposit.js';
 import './handlers/withdraw.js';
 import './handlers/accounts.js';
+import './handlers/balance.js';
+import './handlers/history.js';
