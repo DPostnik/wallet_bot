@@ -31,6 +31,7 @@ Respond ONLY with valid JSON in this format:
     }],
   });
 
-  const text = response.content[0].text;
-  return JSON.parse(text);
+  const raw = response.content[0].text;
+  const cleaned = raw.replace(/^```json?\n?/m, '').replace(/\n?```$/m, '');
+  return JSON.parse(cleaned);
 }

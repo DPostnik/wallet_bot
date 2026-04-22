@@ -11,49 +11,54 @@ const pendingReceipt = new Map();
 bot.on('message:photo', async (ctx) => {
   await ctx.reply('Processing receipt...');
 
-  const photo = ctx.message.photo[ctx.message.photo.length - 1]; // highest resolution
-  const file = await ctx.api.getFile(photo.file_id);
-  const url = `https://api.telegram.org/file/bot${ctx.api.token}/${file.file_path}`;
+  try {
+    const photo = ctx.message.photo[ctx.message.photo.length - 1]; // highest resolution
+    const file = await ctx.api.getFile(photo.file_id);
+    const url = `https://api.telegram.org/file/bot${ctx.api.token}/${file.file_path}`;
 
-  // Download image
-  const response = await fetch(url);
-  const buffer = Buffer.from(await response.arrayBuffer());
+    // Download image
+    const response = await fetch(url);
+    const buffer = Buffer.from(await response.arrayBuffer());
 
-  // Upload to Supabase Storage
-  const fileName = `${Date.now()}_${photo.file_id}.jpg`;
-  const imageUrl = await db.uploadImage(fileName, buffer);
+    // Upload to Supabase Storage
+    const fileName = `${Date.now()}_${photo.file_id}.jpg`;
+    const imageUrl = await db.uploadImage(fileName, buffer);
 
-  // OCR
-  const text = await extractText(buffer);
-  if (!text || text.trim().length < 5) {
-    return ctx.reply('Could not read text from this image. Try a clearer photo.', { reply_markup: mainMenu() });
+    // OCR
+    const text = await extractText(buffer);
+    if (!text || text.trim().length < 5) {
+      return ctx.reply('Could not read text from this image. Try a clearer photo.', { reply_markup: mainMenu() });
+    }
+
+    // Claude categorization
+    const result = await categorizeReceipt(text);
+
+    // Store pending receipt
+    pendingReceipt.set(ctx.chat.id, {
+      total: result.total,
+      currency: result.currency,
+      category: result.category,
+      items: result.items,
+      imageUrl,
+    });
+
+    // Ask which account to save to
+    const accounts = await db.getAccounts();
+    const itemsSummary = result.items.map(i => `  ${i.name}: ${i.amount}`).join('\n');
+    const kb = new InlineKeyboard();
+    for (const acc of accounts) {
+      kb.text(`${acc.name} (${acc.currency})`, `rcpt_save:${acc.id}`).row();
+    }
+    kb.text('Cancel', 'rcpt_cancel');
+
+    await ctx.reply(
+      `Found: ${result.total} ${result.currency} — ${result.category}\n\nItems:\n${itemsSummary}\n\nSave to which account?`,
+      { reply_markup: kb }
+    );
+  } catch (err) {
+    console.error('Receipt processing error:', err);
+    await ctx.reply('Failed to process receipt. Try again.', { reply_markup: mainMenu() });
   }
-
-  // Claude categorization
-  const result = await categorizeReceipt(text);
-
-  // Store pending receipt
-  pendingReceipt.set(ctx.chat.id, {
-    total: result.total,
-    currency: result.currency,
-    category: result.category,
-    items: result.items,
-    imageUrl,
-  });
-
-  // Ask which account to save to
-  const accounts = await db.getAccounts();
-  const itemsSummary = result.items.map(i => `  ${i.name}: ${i.amount}`).join('\n');
-  const kb = new InlineKeyboard();
-  for (const acc of accounts) {
-    kb.text(`${acc.name} (${acc.currency})`, `rcpt_save:${acc.id}`).row();
-  }
-  kb.text('Cancel', 'rcpt_cancel');
-
-  await ctx.reply(
-    `Found: ${result.total} ${result.currency} — ${result.category}\n\nItems:\n${itemsSummary}\n\nSave to which account?`,
-    { reply_markup: kb }
-  );
 });
 
 bot.callbackQuery(/^rcpt_save:(.+)$/, async (ctx) => {
