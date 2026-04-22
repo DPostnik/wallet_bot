@@ -25,38 +25,58 @@ Accounts are user-managed (create, edit, delete). Each has a name and currency.
 ## Data Model
 
 ### accounts
-| Column   | Type   | Description                  |
-|----------|--------|------------------------------|
-| id       | uuid   | Primary key                  |
-| name     | text   | Display name                 |
-| currency | text   | USD, USDT, or PLN            |
-| created_at | timestamp | Creation date             |
+| Column     | Type      | Description                  |
+|------------|-----------|------------------------------|
+| id         | uuid      | Primary key                  |
+| name       | text      | Display name                 |
+| currency   | text      | USD, USDT, or PLN            |
+| created_at | timestamp | Creation date                |
+| updated_at | timestamp | Last update                  |
 
 ### transactions
-| Column      | Type   | Description                              |
-|-------------|--------|------------------------------------------|
-| id          | uuid   | Primary key                              |
-| account_id  | uuid   | FK to accounts                           |
-| type        | text   | deposit, withdrawal, exchange, deduction |
-| amount      | numeric | Positive number                         |
-| currency    | text   | Currency of the transaction              |
-| category    | text   | Auto-assigned by Claude (nullable)       |
-| description | text   | Note or OCR-extracted text               |
-| image_url   | text   | Receipt image in Supabase Storage        |
-| created_at  | timestamp | Transaction date                      |
+| Column      | Type      | Description                        |
+|-------------|-----------|-------------------------------------|
+| id          | uuid      | Primary key                        |
+| account_id  | uuid      | FK to accounts                     |
+| type        | text      | deposit or withdrawal              |
+| amount      | numeric   | Positive number                    |
+| category    | text      | Auto-assigned by Claude (nullable) |
+| description | text      | Note or OCR-extracted text         |
+| image_url   | text      | Receipt image in Supabase Storage  |
+| exchange_id | uuid      | FK to exchanges (nullable)         |
+| created_at  | timestamp | Transaction date                   |
+
+Transaction currency always matches its account's currency (no separate currency column).
 
 ### exchanges
-| Column          | Type    | Description              |
-|-----------------|---------|--------------------------|
-| id              | uuid    | Primary key              |
-| from_account_id | uuid    | FK to accounts           |
-| to_account_id   | uuid    | FK to accounts           |
-| amount_in       | numeric | Amount taken from source |
-| amount_out      | numeric | Amount added to target   |
-| rate            | numeric | Manual exchange rate     |
-| created_at      | timestamp | Exchange date          |
+| Column          | Type      | Description              |
+|-----------------|-----------|--------------------------|
+| id              | uuid      | Primary key              |
+| from_account_id | uuid      | FK to accounts           |
+| to_account_id   | uuid      | FK to accounts           |
+| amount_in       | numeric   | Amount taken from source |
+| amount_out      | numeric   | Amount added to target   |
+| rate            | numeric   | Manual exchange rate     |
+| created_at      | timestamp | Exchange date            |
 
-Account balance is computed from transactions (sum of deposits minus sum of withdrawals/deductions) rather than stored directly. Exchange operations create a withdrawal on the source account and a deposit on the target account, linked via the exchanges table.
+### rates
+| Column     | Type      | Description                             |
+|------------|-----------|------------------------------------------|
+| id         | uuid      | Primary key                             |
+| from_currency | text   | Source currency (e.g., PLN)             |
+| to_currency   | text   | Target currency (e.g., USD)             |
+| rate       | numeric   | Conversion rate                         |
+| updated_at | timestamp | When this rate was last set              |
+
+Stores the latest manual exchange rate per currency pair. Updated whenever the user performs an exchange or sets a rate manually. Used by the balance view to convert totals to USD. If no rate exists for a pair, that account's balance is shown unconverted with a "no rate" note.
+
+### How balances are computed
+
+Account balance = sum of deposits - sum of withdrawals.
+
+Exchange operations create two transaction rows linked by `exchange_id`: a withdrawal on the source account and a deposit on the target account. This keeps balance computation simple — just deposits minus withdrawals.
+
+"Deductions" (e.g., sister buying subscriptions on user's behalf) are recorded as withdrawals with a descriptive category/note. No separate type needed.
 
 ## Bot Interface
 
@@ -74,10 +94,12 @@ Account balance is computed from transactions (sum of deposits minus sum of with
 2. Bot responds: "Processing receipt..."
 3. Tesseract.js extracts text from the image
 4. Extracted text is sent to Claude API for categorization
-5. Claude returns structured JSON: items with amount, currency, category
-6. Bot shows the result: "Found: 150 PLN — Groceries. Save to which account?"
+5. Claude returns structured JSON: total amount, currency, category, and itemized breakdown
+6. Bot shows the result: "Found: 150 PLN — Groceries (3 items). Save to which account?"
 7. User picks an account via inline button
-8. Transaction is saved, image is stored in Supabase Storage
+8. One transaction is saved with the total amount. Itemized breakdown is stored in the description field. Image is stored in Supabase Storage.
+
+Multi-item receipts are saved as a single transaction with the total. The per-item details go into the description for reference.
 
 ### Spending Categories
 Claude assigns one of: Groceries, Household, Office, Gardening, Transport, Subscriptions, Dining, Health, Clothing, Entertainment, Other.
@@ -137,6 +159,14 @@ wallet/
 ├── .env
 └── package.json
 ```
+
+## Security
+
+The bot is personal (single-user). Access is restricted by checking `ctx.from.id` against a `TELEGRAM_USER_ID` environment variable. Messages from other users are silently ignored.
+
+## OCR Note: Tesseract.js on Railway
+
+Tesseract.js loads ~15MB language data and is CPU-intensive. Railway free tier has limited resources. Polish language data (`pol`) must be explicitly loaded. If performance is poor, switch to Google Cloud Vision free tier (1,000 images/month).
 
 ## Out of Scope
 
