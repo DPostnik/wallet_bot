@@ -24,6 +24,7 @@ bot.command('start', async (ctx) => {
   await ctx.reply('Wallet Bot', { reply_markup: mainMenu() });
 });
 
+import './handlers/exchange.js';
 import './handlers/deposit.js';
 import './handlers/withdraw.js';
 import './handlers/accounts.js';
