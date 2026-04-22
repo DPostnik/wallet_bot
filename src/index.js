@@ -1,4 +1,4 @@
-const { bot } = require('./bot');
+import { bot } from './bot.js';
 
 bot.start();
 console.log('Wallet bot is running');

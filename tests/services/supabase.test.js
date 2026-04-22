@@ -10,7 +10,7 @@ vi.mock('@supabase/supabase-js', () => ({
   }),
 }));
 
-vi.mock('../../src/config.js', () => ({
+vi.mock('../../src/config', () => ({
   SUPABASE_URL: 'http://localhost',
   SUPABASE_KEY: 'test-key',
 }));
