@@ -58,9 +58,10 @@ export async function getBalance(accountId) {
     .eq('account_id', accountId);
   if (error) throw error;
 
-  return data.reduce((sum, tx) => {
+  const raw = data.reduce((sum, tx) => {
     return tx.type === 'deposit' ? sum + Number(tx.amount) : sum - Number(tx.amount);
   }, 0);
+  return Math.round(raw * 100) / 100;
 }
 
 // --- Exchanges ---

@@ -12,7 +12,7 @@ bot.callbackQuery('balances', async (ctx) => {
 
   for (const acc of accounts) {
     const balance = await db.getBalance(acc.id);
-    text += `${acc.name}: ${balance} ${acc.currency}\n`;
+    text += `${acc.name}: ${balance.toFixed(2)} ${acc.currency}\n`;
 
     if (acc.currency === 'USD' || acc.currency === 'USDT') {
       totalUsd += balance;
